@@ -27,7 +27,7 @@ async def tier_1(
         if ext == "csv":
             data = pd.read_csv(StringIO(file_content.decode()))
         elif ext in {"xls", "xlsx"}:
-            data = pd.read_excel(BytesIO(file_content))
+            data = pd.read_excel(BytesIO(file_content), sheet_name=None)
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
