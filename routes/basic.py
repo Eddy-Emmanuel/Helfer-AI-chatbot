@@ -27,7 +27,8 @@ async def tier_1(
         if ext == "csv":
             data = pd.read_csv(StringIO(file_content.decode()))
         elif ext in {"xls", "xlsx"}:
-            data = pd.read_excel(BytesIO(file_content), sheet_name=None)
+            sheets_dict = pd.read_excel(BytesIO(file_content), sheet_name=None)
+            data = pd.concat([df.assign(SheetName=name) for name, df in sheets_dict.items()], ignore_index=True)
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
