@@ -1,10 +1,11 @@
 import pandas as pd
-from fastapi import Depends, APIRouter, UploadFile, File, Form, status, HTTPException
 from typing import Annotated
 from io import StringIO, BytesIO
+from utils.bot_utils import AnalyzeData
 from config.schema import Tier_1_Response
 from auth.api_auth import authenticate_key
 from fastapi.responses import JSONResponse
+from fastapi import Depends, APIRouter, UploadFile, File, Form, status, HTTPException
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,9 @@ async def tier_1(
                 detail="Unsupported file type. Only csv, xlsx, and xls are allowed."
             )
             
-        return {"response": "Bot response"}
+        bot_response = await AnalyzeData(data=data, user_prompt=prompt)
+
+        return JSONResponse(status_code=status.HTTP_200_OK, content={"response":bot_response})
     
     except Exception as e:
         logger.exception("Error processing uploaded file")
