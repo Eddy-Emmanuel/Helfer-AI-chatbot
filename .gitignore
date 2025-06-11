@@ -2,4 +2,4 @@ __pycache__/
 *.env
 .ipynb_checkpoints/
 notebook.ipynb
-Dummy Data.xlsx
+venv/
