@@ -1,6 +1,7 @@
 from fastapi import FastAPI
-from routes import basic
+from routes import multi_agent
 
-app = FastAPI()
+app = FastAPI(root_path="/ai")
 
-app.include_router(router=basic.route)
+app.include_router(router=multi_agent.router)
+
