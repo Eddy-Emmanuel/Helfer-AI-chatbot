@@ -20,8 +20,8 @@ async def QueryMultiAgent(
     api_key: Annotated[str, Depends(EndPoint_Auth)],
     user_query:Annotated[str, Body(..., description="User's input query")],
     business_id:Annotated[int, Body(..., description="Business ID per company")],
-    previous_user_query:str="No previous user_query",
-    previous_ai_response:str="No previous ai response",
+    previous_user_query: Annotated[str, Body(description="Previous user query")] = "No previous user_query",
+    previous_ai_response: Annotated[str, Body(description="Previous AI response")] = "No previous ai response",
     upload_file:Optional[UploadFile]= File(None, description="Optional file to analyze")
 ):
     if not api_key:
