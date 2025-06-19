@@ -27,6 +27,7 @@ langchain-openai==0.3.24
 langchain-tavily==0.2.2
 langchain-text-splitters==0.3.8
 langsmith==0.3.45
+langgraph==0.3.27
 marshmallow==3.26.1
 multidict==6.4.4
 mypy==1.16.0
@@ -63,4 +64,3 @@ urllib3==2.4.0
 yarl==1.20.1
 zstandard==0.23.0
 uvicorn==0.34.2
-langgraph==0.3.27
