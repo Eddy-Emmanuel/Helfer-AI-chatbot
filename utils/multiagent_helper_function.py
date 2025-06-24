@@ -58,9 +58,13 @@ class AgentTools:
         self.llm = llm
         self.agent_router = agent_router
         self.agent_schema = agent_schema
-        self.sales_db = LoadDB(db_uri=db_uri, table_name=["sales", "sales_items"])
+        self.customer_sales_db = LoadDB(db_uri=db_uri, table_name=["sales", "sales_items"])
         self.inventory_db = LoadDB(db_uri=db_uri, table_name=["products"])
-        self.expense_db = LoadDB(db_uri=db_uri, table_name=["expenses"])
+        self.expense_db = LoadDB(db_uri=db_uri, table_name=['expense_accounts', 'expense_purposes', 'expenses'])
+        self.customer_db = LoadDB(db_uri=db_uri, table_name=["customers"])
+        self.pointOfSales_db = LoadDB(db_uri=db_uri, table_name=["point_of_sales"])
+        self.paymentmethod_db = LoadDB(db_uri=db_uri, table_name=["payment_methods"])
+        self.categories_and_brand_db = LoadDB(db_uri=db_uri, table_name=['brands', 'categories'])
         self.db_prompt = """
 You are an agent designed to interact with a SQL database.
 Given an input question, create a syntactically correct {dialect} query to run,
@@ -92,7 +96,18 @@ Important: The database contains multiple businesses. ALWAYS filter every SQL qu
         print("Routing query")
         llm_classifier = self.llm.with_structured_output(self.agent_router)
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an AI router. Based on the user's query, select the most appropriate agent."),
+            ("system", (
+                "You are an AI router. Based on the user's query, select the most appropriate agent.\n"
+                "This is the information about each agents:\n"
+                "'conversation_agent' for general dialogue,\n"
+                "'customer_sales_agent' for questions related to customer sales,\n"
+                "'inventory_agent' for inventory analysis,\n"
+                "'expense_agent' for expense tracking and management,\n"
+                "'search_agent' for price recommendations,\n"
+                "'point_of_sales_agent' for queries related to point of sales and walk-in sales,\n"
+                "'payment_methods_agent' for queries related to payment methods,\n"
+                "'category&brand_agent' for queries related to selling categories and selling brands.")
+                    ),
             ("user", "{user_input}")
         ])
         chain = prompt|llm_classifier
@@ -111,19 +126,20 @@ Important: The database contains multiple businesses. ALWAYS filter every SQL qu
             ("system", "You are a friendly helpful AI assistant. Provide clear, accurate, and helpful responses to user queries."),
             ("user", "{user_input}")
         ])
-        chain = prompt|self.llm
+        llm = ChatOpenAI(model="gpt-4.1", temperature=.9)
+        chain = prompt|llm
         response = chain.invoke({"user_input":state["user_query"]})
         return {"agent_response":response.content}
 
-    def SalesAgent(self, state: AgentSchema):
+    def CustomerSalesAgent(self, state: AgentSchema):
         print("Invoking SalesAgent")
         TEMPLATE = ChatPromptTemplate.from_messages([
-            ("system", self.db_prompt.format(dialect=self.sales_db.dialect, top_k=20, business_id=state["business_id"])),
+            ("system", self.db_prompt.format(dialect=self.customer_sales_db.dialect, top_k=20, business_id=state["business_id"])),
             MessagesPlaceholder("agent_scratchpad"),
             ("user", "{user_input}")
         ])
 
-        agent = CreateAgent(db=self.sales_db, llm=self.llm, prompt=TEMPLATE)
+        agent = CreateAgent(db=self.customer_sales_db, llm=self.llm, prompt=TEMPLATE)
     
         response = agent.invoke({"user_input":state["user_query"]})["output"]
     
@@ -156,33 +172,84 @@ Important: The database contains multiple businesses. ALWAYS filter every SQL qu
         response = agent.invoke({"user_input":state["user_query"]})["output"]
     
         return {"agent_response" : response}
+    
+    def PointOfSalesAgent(self, state:AgentSchema):
+        print("Invoking PointOfSalesAgent")
+        TEMPLATE = ChatPromptTemplate.from_messages([
+            ("system", self.db_prompt.format(dialect=self.pointOfSales_db.dialect, top_k=20, business_id=state["business_id"])),
+            MessagesPlaceholder("agent_scratchpad"),
+            ("user", "{user_input}")
+        ])
+
+        agent = CreateAgent(db=self.pointOfSales_db, llm=self.llm, prompt=TEMPLATE)
+    
+        response = agent.invoke({"user_input":state["user_query"]})["output"]
+    
+        return {"agent_response" : response}
+    
+    def PaymentMethodAgent(self, state:AgentSchema):
+        print("Invoking PaymentMethodAgent")
+        TEMPLATE = ChatPromptTemplate.from_messages([
+            ("system", self.db_prompt.format(dialect=self.paymentmethod_db.dialect, top_k=20, business_id=state["business_id"])),
+            MessagesPlaceholder("agent_scratchpad"),
+            ("user", "{user_input}")
+        ])
+
+        agent = CreateAgent(db=self.paymentmethod_db, llm=self.llm, prompt=TEMPLATE)
+    
+        response = agent.invoke({"user_input":state["user_query"]})["output"]
+    
+        return {"agent_response" : response}
+    
+    def CategoryAndBrandAgent(self, state:AgentSchema):
+        print("Invoking CategoryAndBrandAgent")
+        TEMPLATE = ChatPromptTemplate.from_messages([
+            ("system", self.db_prompt.format(dialect=self.categories_and_brand_db.dialect, top_k=20, business_id=state["business_id"])),
+            MessagesPlaceholder("agent_scratchpad"),
+            ("user", "{user_input}")
+        ])
+
+        agent = CreateAgent(db=self.categories_and_brand_db, llm=self.llm, prompt=TEMPLATE)
+    
+        response = agent.invoke({"user_input":state["user_query"]})["output"]
+    
+        return {"agent_response" : response}
 
     def CompileAgent(self):
         graph = StateGraph(state_schema=self.agent_schema)
 
         graph.add_node("ConversationAgent", self.ConversationAgent)
-        graph.add_node("SalesAgent", self.SalesAgent)
+        graph.add_node("CustomerSalesAgent", self.CustomerSalesAgent)
         graph.add_node("InventoryAgent", self.InventoryAgent)
         graph.add_node("ExpenseAgent", self.ExpenseAgent)
         graph.add_node("SearchAgent", self.SearchAgent)
+        graph.add_node("PointOfSalesAgent", self.PointOfSalesAgent)
+        graph.add_node("PaymentMethodAgent", self.PaymentMethodAgent)
+        graph.add_node("CategoryAndBrandAgent", self.CategoryAndBrandAgent)
 
         graph.add_conditional_edges(START,
                                     self.RouteQuery,
                                     {"conversation_agent":"ConversationAgent",
-                                     "sales_agent":"SalesAgent",
+                                     "customer_sales_agent":"CustomerSalesAgent",
                                      "inventory_agent":"InventoryAgent",
                                      "expense_agent":"ExpenseAgent",
-                                     "search_agent":"SearchAgent"})
+                                     "search_agent":"SearchAgent",
+                                     "point_of_sales_agent":"PointOfSalesAgent",
+                                     "payment_methods_agent":"PaymentMethodAgent",
+                                     "category&brand_agent":"CategoryAndBrandAgent"})
 
         graph.add_edge("ConversationAgent", END)
-        graph.add_edge("SalesAgent", END)
+        graph.add_edge("CustomerSalesAgent", END)
         graph.add_edge("InventoryAgent", END)
         graph.add_edge("ExpenseAgent", END)
         graph.add_edge("SearchAgent", END)
+        graph.add_edge("PointOfSalesAgent", END)
+        graph.add_edge("PaymentMethodAgent", END)
+        graph.add_edge("CategoryAndBrandAgent", END)
         
         return graph.compile()
     
-llm = ChatOpenAI(model="gpt-4.1", temperature=1)
+llm = ChatOpenAI(model="gpt-4.1", temperature=0)
 
 helfercorps = AgentTools(llm=llm,
                          agent_schema=AgentSchema, 
