@@ -27,7 +27,10 @@ def CreateAgent(db, llm, prompt):
     toolkit = SQLDatabaseToolkit(db=db, llm=llm)
     tools = toolkit.get_tools()
     agent = create_openai_tools_agent(llm, tools, prompt=prompt)
-    return AgentExecutor(agent=agent, tools=tools)
+    return AgentExecutor(agent=agent, 
+                         tools=tools, 
+                         verbose=False,
+                         handle_parsing_errors=True)
 
 def CreateSearchAgent(llm):
     search_tool = TavilySearch(max_results=5,
@@ -58,13 +61,12 @@ class AgentTools:
         self.llm = llm
         self.agent_router = agent_router
         self.agent_schema = agent_schema
-        self.customer_sales_db = LoadDB(db_uri=db_uri, table_name=["sales", "sales_items"])
+        self.customer_sales_db = LoadDB(db_uri=db_uri, table_name=["sales", "sales_items", "customers", "products"])
         self.inventory_db = LoadDB(db_uri=db_uri, table_name=["products"])
-        self.expense_db = LoadDB(db_uri=db_uri, table_name=['expense_accounts', 'expense_purposes', 'expenses'])
-        self.customer_db = LoadDB(db_uri=db_uri, table_name=["customers"])
-        self.pointOfSales_db = LoadDB(db_uri=db_uri, table_name=["point_of_sales"])
-        self.paymentmethod_db = LoadDB(db_uri=db_uri, table_name=["payment_methods"])
-        self.categories_and_brand_db = LoadDB(db_uri=db_uri, table_name=['brands', 'categories'])
+        self.expense_db = LoadDB(db_uri=db_uri, table_name=['expenses','expense_accounts', 'expense_purposes', "users"])
+        self.pointOfSales_db = LoadDB(db_uri=db_uri, table_name=["sales", "point_of_sales"])
+        self.paymentmethod_db = LoadDB(db_uri=db_uri, table_name=["sales", "payment_methods"])
+        self.categories_and_brand_db = LoadDB(db_uri=db_uri, table_name=["sales_items", 'brands', 'categories'])
         self.db_prompt = """
 You are an agent designed to interact with a SQL database.
 Given an input question, create a syntactically correct {dialect} query to run,
@@ -90,6 +92,8 @@ Then you should query the schema of the most relevant tables.
 Important: Always add the naira signs for currencys.
 
 Important: The database contains multiple businesses. ALWAYS filter every SQL query using this condition: `business_id = '{business_id}'`.
+
+Important: If result not found, do not return business_id in your response.
 """
 
     def RouteQuery(self, state:AgentSchema):
