@@ -21,7 +21,8 @@ class AgentRouter(BaseModel):
         "search_agent", 
         "point_of_sales_agent",
         "payment_methods_agent",
-        "category&brand_agent"
+        "category&brand_agent",
+        "analysis_agent"
     ] = Field(
         ..., 
         description=(
@@ -34,6 +35,7 @@ class AgentRouter(BaseModel):
             "'point_of_sales_agent' for queries related to point of sales and walk-in sales, "
             "'payment_methods_agent' for queries related to payment methods, "
             "'category&brand_agent' for queries related to selling categories and selling brands."
+            "'analysis_agent' To aggregate and analyze data from various agents, generating actionable insights, performance summaries, and trend reports for decision-making."
         )
     )
     

@@ -67,33 +67,26 @@ class AgentTools:
         self.pointOfSales_db = LoadDB(db_uri=db_uri, table_name=["sales", "point_of_sales"])
         self.paymentmethod_db = LoadDB(db_uri=db_uri, table_name=["sales", "payment_methods"])
         self.categories_and_brand_db = LoadDB(db_uri=db_uri, table_name=["sales_items", 'brands', 'categories'])
+        self.analysis_agent = LoadDB(db_uri=db_uri, table_name=["sales", "sales_items", "products", "products", "customers", "point_of_sales", "payment_methods"])
         self.db_prompt = """
 You are an agent designed to interact with a SQL database.
 Given an input question, create a syntactically correct {dialect} query to run,
 then look at the results of the query and return the answer. Unless the user
 specifies a specific number of examples they wish to obtain, always limit your
 query to at most {top_k} results.
-
 You can order the results by a relevant column to return the most interesting
 examples in the database. Never query for all the columns from a specific table,
 only ask for the relevant columns given the question.
-
 You MUST double check your query before executing it. If you get an error while
 executing a query, rewrite the query and try again.
-
 DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the
 database.
-
 To start you should ALWAYS look at the tables in the database to see what you
 can query. Do NOT skip this step.
-
 Then you should query the schema of the most relevant tables.
-
 Important: Always add the naira signs for currencys.
-
 Important: The database contains multiple businesses. ALWAYS filter every SQL query using this condition: `business_id = '{business_id}'`.
-
-Important: If result not found, do not return business_id in your response.
+**Important:** In your final response, do NOT mention or include the business_id. Focus only on presenting the business data and insights without referencing the business_id value.
 """
 
     def RouteQuery(self, state:AgentSchema):
@@ -144,6 +137,20 @@ Important: If result not found, do not return business_id in your response.
         ])
 
         agent = CreateAgent(db=self.customer_sales_db, llm=self.llm, prompt=TEMPLATE)
+    
+        response = agent.invoke({"user_input":state["user_query"]})["output"]
+    
+        return {"agent_response" : response}
+    
+    def AnalysisAgent(self, state: AgentSchema):
+        print("Invoking AnalysisAgent")
+        TEMPLATE = ChatPromptTemplate.from_messages([
+            ("system", self.db_prompt.format(dialect=self.analysis_agent.dialect, top_k=20, business_id=state["business_id"])),
+            MessagesPlaceholder("agent_scratchpad"),
+            ("user", "{user_input}")
+        ])
+
+        agent = CreateAgent(db=self.analysis_agent, llm=self.llm, prompt=TEMPLATE)
     
         response = agent.invoke({"user_input":state["user_query"]})["output"]
     
@@ -230,6 +237,7 @@ Important: If result not found, do not return business_id in your response.
         graph.add_node("PointOfSalesAgent", self.PointOfSalesAgent)
         graph.add_node("PaymentMethodAgent", self.PaymentMethodAgent)
         graph.add_node("CategoryAndBrandAgent", self.CategoryAndBrandAgent)
+        graph.add_node("AnalysisAgent", self.AnalysisAgent)
 
         graph.add_conditional_edges(START,
                                     self.RouteQuery,
@@ -240,7 +248,8 @@ Important: If result not found, do not return business_id in your response.
                                      "search_agent":"SearchAgent",
                                      "point_of_sales_agent":"PointOfSalesAgent",
                                      "payment_methods_agent":"PaymentMethodAgent",
-                                     "category&brand_agent":"CategoryAndBrandAgent"})
+                                     "category&brand_agent":"CategoryAndBrandAgent",
+                                      "analysis_agent":"AnalysisAgent"})
 
         graph.add_edge("ConversationAgent", END)
         graph.add_edge("CustomerSalesAgent", END)
@@ -250,6 +259,7 @@ Important: If result not found, do not return business_id in your response.
         graph.add_edge("PointOfSalesAgent", END)
         graph.add_edge("PaymentMethodAgent", END)
         graph.add_edge("CategoryAndBrandAgent", END)
+        graph.add_edge("AnalysisAgent", END)
         
         return graph.compile()
     
