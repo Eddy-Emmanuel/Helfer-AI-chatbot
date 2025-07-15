@@ -2,8 +2,8 @@ import os
 from datetime import datetime
 from typing import Type, List
 from pydantic import BaseModel
+from langchain.tools import Tool
 from langchain_openai import ChatOpenAI
-from langchain_tavily import TavilySearch
 from langchain.agents import AgentExecutor
 from config.secret_keys import project_config
 from model.schema import AgentSchema, AgentRouter
@@ -13,11 +13,11 @@ from langchain_community.utilities import SQLDatabase
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.prompts import MessagesPlaceholder
 from langchain.agents import create_openai_tools_agent
+from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.agent_toolkits import SQLDatabaseToolkit
 
 from config.secret_keys import project_config
 os.environ["OPENAI_API_KEY"] = project_config.openai_api_key
-os.environ["TAVILY_API_KEY"] = project_config.tavily_api_key
 
 def LoadDB(db_uri:Type[str], table_name:Type[List[str]]):
     db = SQLDatabase.from_uri(db_uri, include_tables=table_name)
@@ -33,13 +33,11 @@ def CreateAgent(db, llm, prompt):
                          handle_parsing_errors=True)
 
 def CreateSearchAgent(llm):
-    search_tool = TavilySearch(max_results=5,
-                               topic="general",
-                               search_depth="basic",
-                               time_range="month")
+    search = DuckDuckGoSearchResults()
+    
     system_prompt = """
     You are a smart and efficient research assistant specialized in financial topics.
-    Use the search tool when necessary to gather the latest insights, news, or updates from the past month.
+    Use the search tool when necessary to get updates from web.
     Always prioritize accuracy, clarity, and relevance in your answers.
     Think step-by-step when needed and explain your reasoning clearly. (Only when query explicitly says so.)
     Important: Always add the naira signs for currencys.
@@ -49,7 +47,15 @@ def CreateSearchAgent(llm):
         MessagesPlaceholder("agent_scratchpad"),
         ("user", "{user_input}")
     ])
-    agent = create_openai_tools_agent(llm=llm, tools=[search_tool], prompt=TEMPLATE)
+    
+    search_tool = Tool(name="search_tool", 
+                       func=lambda x:search.invoke(x), 
+                       description="Search tool for getting real time information on the internet")
+    
+    agent = create_openai_tools_agent(llm=llm,
+                                      tools=[search_tool],
+                                      prompt=TEMPLATE)
+    
     return AgentExecutor(agent=agent, tools=[search_tool], verbose=False)
 
 class AgentTools:
@@ -123,7 +129,7 @@ Important: The database contains multiple businesses. ALWAYS filter every SQL qu
             ("system", "You are a friendly helpful AI assistant. Provide clear, accurate, and helpful responses to user queries."),
             ("user", "{user_input}")
         ])
-        llm = ChatOpenAI(model="gpt-4.1", temperature=.9)
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=.9)
         chain = prompt|llm
         response = chain.invoke({"user_input":state["user_query"]})
         return {"agent_response":response.content}
@@ -263,7 +269,7 @@ Important: The database contains multiple businesses. ALWAYS filter every SQL qu
         
         return graph.compile()
     
-llm = ChatOpenAI(model="gpt-4.1", temperature=0)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 helfercorps = AgentTools(llm=llm,
                          agent_schema=AgentSchema, 
@@ -285,6 +291,7 @@ f"[Current Nigerian Time: {now}] [Model: helfercorps-v1] [Agent: Tobi]\n"
 5. Business Health Insights: Track key performance indicators like profit margins, turnover rates, and overall business trends to make data-driven decisions.\n
 6. Smart Data Entry & Upload: Automatically extract and organize data from PDFs or even handwritten notes directly into your system no manual input needed.
 """
+"IMPORTANT: \nFormat your response properly. Highlight bullet points where necessary."
 f"\nprevious_user_query:{state['previous_user_query']}\nprevious_ai_response:{state['previous_ai_response']}\nuser_query:{state['user_query']}"
 )
     return state
