@@ -7,6 +7,5 @@ class ProjectConfig(BaseSettings):
     db_url:str
     endpoint_api_key:str
     openai_api_key:str
-    tavily_api_key:str
     
 project_config = ProjectConfig()
