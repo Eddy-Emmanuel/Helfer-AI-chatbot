@@ -30,6 +30,7 @@ def CreateAgent(db, llm, prompt):
     return AgentExecutor(agent=agent, 
                          tools=tools, 
                          verbose=False,
+                         max_iterations=15,
                          handle_parsing_errors=True)
 
 def CreateSearchAgent(llm):
@@ -95,6 +96,7 @@ Then you should query the schema of the most relevant tables.
 Important: 
     - Always add the naira signs for currencies.
     - Do not include item ids in your response.
+    - Ensure to use tables to give your answer when necessary.
 
 Important: 
     - Avoiding exact string comparisons with '='; use flexible matching such as:
