@@ -67,32 +67,41 @@ class AgentTools:
         self.llm = llm
         self.agent_router = agent_router
         self.agent_schema = agent_schema
-        self.customer_sales_db = LoadDB(db_uri=db_uri, table_name=["sales", "sales_items", "customers", "products"])
-        self.inventory_db = LoadDB(db_uri=db_uri, table_name=["products"])
-        self.expense_db = LoadDB(db_uri=db_uri, table_name=['expenses','expense_accounts', 'expense_purposes', "users"])
-        self.pointOfSales_db = LoadDB(db_uri=db_uri, table_name=["sales", "point_of_sales"])
-        self.paymentmethod_db = LoadDB(db_uri=db_uri, table_name=["sales", "payment_methods"])
-        self.categories_and_brand_db = LoadDB(db_uri=db_uri, table_name=["sales_items", 'brands', 'categories'])
-        self.analysis_agent = LoadDB(db_uri=db_uri, table_name=["sales", "sales_items", "products", "products", "customers", "point_of_sales", "payment_methods"])
+        self.helfer_db = LoadDB(db_uri=db_uri, table_name=["brands", "categories", "customers", "expense_accounts",
+                                                           "expense_purposes", "expenses", "payment_methods", "point_of_sales", 
+                                                           "products", "sales", "sales_items", "users", "shipping_methods", "units"])
         self.db_prompt = """
 You are an agent designed to interact with a SQL database.
 Given an input question, create a syntactically correct {dialect} query to run,
 then look at the results of the query and return the answer. Unless the user
 specifies a specific number of examples they wish to obtain, always limit your
 query to at most {top_k} results.
+
 You can order the results by a relevant column to return the most interesting
 examples in the database. Never query for all the columns from a specific table,
 only ask for the relevant columns given the question.
+
 You MUST double check your query before executing it. If you get an error while
 executing a query, rewrite the query and try again.
+
 DO NOT make any DML statements (INSERT, UPDATE, DELETE, DROP etc.) to the
 database.
+
 To start you should ALWAYS look at the tables in the database to see what you
 can query. Do NOT skip this step.
+
 Then you should query the schema of the most relevant tables.
-Important: Always add the naira signs for currencys.
+
+Important: Always add the naira signs for currencies. 
+
+Important: 
+    - Avoiding exact string comparisons with '='; use flexible matching such as:
+    - LOWER(TRIM(column)) LIKE LOWER(TRIM('%value%')) 
+    - or ILIKE in systems that support it
+    - Prefer `LIKE` or pattern matching for user-inputted strings
+    - Use IN only if you're normalizing cases (e.g. LOWER(column) IN (...))
+
 Important: The database contains multiple businesses. ALWAYS filter every SQL query using this condition: `business_id = '{business_id}'`.
-**Important:** In your final response, do NOT mention or include the business_id. Focus only on presenting the business data and insights without referencing the business_id value.
 """
 
     def RouteQuery(self, state:AgentSchema):
@@ -103,13 +112,8 @@ Important: The database contains multiple businesses. ALWAYS filter every SQL qu
                 "You are an AI router. Based on the user's query, select the most appropriate agent.\n"
                 "This is the information about each agents:\n"
                 "'conversation_agent' for general dialogue,\n"
-                "'customer_sales_agent' for questions related to customer sales,\n"
-                "'inventory_agent' for inventory analysis,\n"
-                "'expense_agent' for expense tracking and management,\n"
-                "'search_agent' for price recommendations,\n"
-                "'point_of_sales_agent' for queries related to point of sales and walk-in sales,\n"
-                "'payment_methods_agent' for queries related to payment methods,\n"
-                "'category&brand_agent' for queries related to selling categories and selling brands.")
+                "'helfer_db' for db related queries"
+                "'search_agent' for price recommendations")
                     ),
             ("user", "{user_input}")
         ])
@@ -134,99 +138,16 @@ Important: The database contains multiple businesses. ALWAYS filter every SQL qu
         response = chain.invoke({"user_input":state["user_query"]})
         return {"agent_response":response.content}
 
-    def CustomerSalesAgent(self, state: AgentSchema):
-        print("Invoking SalesAgent")
+    
+    def HelferAgent(self, state: AgentSchema):
+        print("Invoking HelferAgent")
         TEMPLATE = ChatPromptTemplate.from_messages([
-            ("system", self.db_prompt.format(dialect=self.customer_sales_db.dialect, top_k=20, business_id=state["business_id"])),
+            ("system", self.db_prompt.format(dialect=self.helfer_db.dialect, top_k=20, business_id=state["business_id"])),
             MessagesPlaceholder("agent_scratchpad"),
             ("user", "{user_input}")
         ])
 
-        agent = CreateAgent(db=self.customer_sales_db, llm=self.llm, prompt=TEMPLATE)
-    
-        response = agent.invoke({"user_input":state["user_query"]})["output"]
-    
-        return {"agent_response" : response}
-    
-    def AnalysisAgent(self, state: AgentSchema):
-        print("Invoking AnalysisAgent")
-        TEMPLATE = ChatPromptTemplate.from_messages([
-            ("system", self.db_prompt.format(dialect=self.analysis_agent.dialect, top_k=20, business_id=state["business_id"])),
-            MessagesPlaceholder("agent_scratchpad"),
-            ("user", "{user_input}")
-        ])
-
-        agent = CreateAgent(db=self.analysis_agent, llm=self.llm, prompt=TEMPLATE)
-    
-        response = agent.invoke({"user_input":state["user_query"]})["output"]
-    
-        return {"agent_response" : response}
-
-    def InventoryAgent(self, state:AgentSchema):
-        print("Invoking InventoryAgent")
-        TEMPLATE = ChatPromptTemplate.from_messages([
-            ("system", self.db_prompt.format(dialect=self.inventory_db.dialect, top_k=20, business_id=state["business_id"])),
-            MessagesPlaceholder("agent_scratchpad"),
-            ("user", "{user_input}")
-        ])
-
-        agent = CreateAgent(db=self.inventory_db, llm=self.llm, prompt=TEMPLATE)
-    
-        response = agent.invoke({"user_input":state["user_query"]})["output"]
-    
-        return {"agent_response" : response}
-
-    def ExpenseAgent(self, state:AgentSchema):
-        print("Invoking ExpenseAgent")
-        TEMPLATE = ChatPromptTemplate.from_messages([
-            ("system", self.db_prompt.format(dialect=self.expense_db.dialect, top_k=20, business_id=state["business_id"])),
-            MessagesPlaceholder("agent_scratchpad"),
-            ("user", "{user_input}")
-        ])
-
-        agent = CreateAgent(db=self.expense_db, llm=self.llm, prompt=TEMPLATE)
-    
-        response = agent.invoke({"user_input":state["user_query"]})["output"]
-    
-        return {"agent_response" : response}
-    
-    def PointOfSalesAgent(self, state:AgentSchema):
-        print("Invoking PointOfSalesAgent")
-        TEMPLATE = ChatPromptTemplate.from_messages([
-            ("system", self.db_prompt.format(dialect=self.pointOfSales_db.dialect, top_k=20, business_id=state["business_id"])),
-            MessagesPlaceholder("agent_scratchpad"),
-            ("user", "{user_input}")
-        ])
-
-        agent = CreateAgent(db=self.pointOfSales_db, llm=self.llm, prompt=TEMPLATE)
-    
-        response = agent.invoke({"user_input":state["user_query"]})["output"]
-    
-        return {"agent_response" : response}
-    
-    def PaymentMethodAgent(self, state:AgentSchema):
-        print("Invoking PaymentMethodAgent")
-        TEMPLATE = ChatPromptTemplate.from_messages([
-            ("system", self.db_prompt.format(dialect=self.paymentmethod_db.dialect, top_k=20, business_id=state["business_id"])),
-            MessagesPlaceholder("agent_scratchpad"),
-            ("user", "{user_input}")
-        ])
-
-        agent = CreateAgent(db=self.paymentmethod_db, llm=self.llm, prompt=TEMPLATE)
-    
-        response = agent.invoke({"user_input":state["user_query"]})["output"]
-    
-        return {"agent_response" : response}
-    
-    def CategoryAndBrandAgent(self, state:AgentSchema):
-        print("Invoking CategoryAndBrandAgent")
-        TEMPLATE = ChatPromptTemplate.from_messages([
-            ("system", self.db_prompt.format(dialect=self.categories_and_brand_db.dialect, top_k=20, business_id=state["business_id"])),
-            MessagesPlaceholder("agent_scratchpad"),
-            ("user", "{user_input}")
-        ])
-
-        agent = CreateAgent(db=self.categories_and_brand_db, llm=self.llm, prompt=TEMPLATE)
+        agent = CreateAgent(db=self.helfer_db, llm=self.llm, prompt=TEMPLATE)
     
         response = agent.invoke({"user_input":state["user_query"]})["output"]
     
@@ -236,36 +157,18 @@ Important: The database contains multiple businesses. ALWAYS filter every SQL qu
         graph = StateGraph(state_schema=self.agent_schema)
 
         graph.add_node("ConversationAgent", self.ConversationAgent)
-        graph.add_node("CustomerSalesAgent", self.CustomerSalesAgent)
-        graph.add_node("InventoryAgent", self.InventoryAgent)
-        graph.add_node("ExpenseAgent", self.ExpenseAgent)
         graph.add_node("SearchAgent", self.SearchAgent)
-        graph.add_node("PointOfSalesAgent", self.PointOfSalesAgent)
-        graph.add_node("PaymentMethodAgent", self.PaymentMethodAgent)
-        graph.add_node("CategoryAndBrandAgent", self.CategoryAndBrandAgent)
-        graph.add_node("AnalysisAgent", self.AnalysisAgent)
+        graph.add_node("HelferAgent", self.HelferAgent)
 
         graph.add_conditional_edges(START,
                                     self.RouteQuery,
                                     {"conversation_agent":"ConversationAgent",
-                                     "customer_sales_agent":"CustomerSalesAgent",
-                                     "inventory_agent":"InventoryAgent",
-                                     "expense_agent":"ExpenseAgent",
-                                     "search_agent":"SearchAgent",
-                                     "point_of_sales_agent":"PointOfSalesAgent",
-                                     "payment_methods_agent":"PaymentMethodAgent",
-                                     "category&brand_agent":"CategoryAndBrandAgent",
-                                      "analysis_agent":"AnalysisAgent"})
+                                     "helfer_db":"HelferAgent",
+                                     "search_agent":"SearchAgent"})
 
         graph.add_edge("ConversationAgent", END)
-        graph.add_edge("CustomerSalesAgent", END)
-        graph.add_edge("InventoryAgent", END)
-        graph.add_edge("ExpenseAgent", END)
+        graph.add_edge("HelferAgent", END)
         graph.add_edge("SearchAgent", END)
-        graph.add_edge("PointOfSalesAgent", END)
-        graph.add_edge("PaymentMethodAgent", END)
-        graph.add_edge("CategoryAndBrandAgent", END)
-        graph.add_edge("AnalysisAgent", END)
         
         return graph.compile()
     
