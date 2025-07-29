@@ -92,7 +92,9 @@ can query. Do NOT skip this step.
 
 Then you should query the schema of the most relevant tables.
 
-Important: Always add the naira signs for currencies. 
+Important: 
+    - Always add the naira signs for currencies.
+    - Do not include item ids in your response.
 
 Important: 
     - Avoiding exact string comparisons with '='; use flexible matching such as:
